@@ -1,0 +1,9 @@
+# 可重新生成的文件不提交；Gradle wrapper 的 jar 必须保留
+.gradle/
+build/
+bin/
+logs/
+*.wpilog
+*.hoot
+simgui*.json
+.DS_Store

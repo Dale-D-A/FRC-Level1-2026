@@ -1,0 +1,23 @@
+课堂演示专用 请先 clone 自己的练习仓库
+git status
+git switch main
+git pull --ff-only
+git switch -c lesson/dashboard-label
+
+只改 RobotContainer.java 的自动标签 Drive 1 second 为 Forward 1 second
+git diff
+git add src/main/java/frc/robot/RobotContainer.java
+git diff --staged
+git commit -m "Clarify autonomous option label"
+git status
+git log --oneline -3
+git push -u origin lesson/dashboard-label
+
+GitHub 创建 PR base main compare lesson/dashboard-label
+看 Files changed 只应有一行显示标签变更
+在自己的练习仓库 review 后 merge
+git switch main
+git pull --ff-only
+
+推送失败时本地提交仍在。不要为通过演示使用 force push。
+所有仓库地址与账号使用教师自己的练习账号，不上传本机凭据。

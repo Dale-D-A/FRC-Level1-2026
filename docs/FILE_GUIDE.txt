@@ -1,0 +1,56 @@
+# FRC 2026 项目结构逐文件讲解
+配套工程 FRC-Level1-2026 根据旧 Iron-Tank-2025 的 Command-based 与 IO 分层重新整理。它包含 Java 源码、2026 构建配置、Gradle wrapper、厂商依赖声明和默认桌面模拟；不是把 2025 文件原样改名，也不是已完成实车适配的赛季代码。
+课堂先看 Main、Robot、RobotContainer、Constants、DriveSubsystem、DriveIO 和 DriveForTime 七个位置。其余内容是教师查阅表。下面所说的“修改位置”是教学建议，不表示只有那一个文件可能受影响。
+## 一 从入口到输出
+启动线：Main.main → RobotBase.startRobot → 创建 Robot → robotInit 创建 RobotContainer → Container 创建子系统和 IO、绑定手柄、建立自动选择器。
+周期线：Robot.robotPeriodic → CommandScheduler.run → 子系统 periodic 更新 Inputs 并发布遥测 → 触发器检查 → 执行命令。周期约 20 ms；本例先更新输入再运行本轮命令，界面读数可能在下一轮才体现新输出。
+手动线：手柄槽位 0 → RobotContainer 的默认驾驶命令 → DriveSubsystem.arcade → 左右输出混合和限幅 → DriveIO.setOutputs → Real 的 TalonFX 或 Sim 的内存状态。正 turn 在本例表示向右转，不能不看约定就套到其他项目。
+自动线：Dashboard AutoChooser → getAutonomousCommand → Robot.autonomousInit 调度 → DriveForTime 占用 drive → initialize 计时 → execute 设置输出 → isFinished 判断一秒 → end 停车。默认自动是 Do nothing；切换到手动时取消自动命令。
+遥测线：DriveIO.updateInputs → DriveIO.Inputs → DriveSubsystem.periodic → SmartDashboard → NetworkTables → 客户端界面；DataLogManager 另外记录日志。看板不在调度器和电机之间，客户端断线不等于机器人程序停止。
+## 二 根目录和构建文件
+build.gradle：定义 Java 与 GradleRIO 插件、Java 17、依赖、roboRIO 部署目标、静态资源、桌面模拟、jar 打包和测试任务。固定 GradleRIO 2026.2.1；Java 源码编码显式 UTF-8，避免中文 Windows 按 GBK 读注释。它依赖 settings.gradle 找插件、vendordeps 提供厂商声明，并使用 src 里的源码和资源。
+settings.gradle：配置插件仓库与当年 WPILib 本地 Maven 路径。本模板将旧项目残留的 2024 改为 2026。仅修改 build.gradle 的年份不一定能修复本地依赖路径，因此迁移要同时检查这些文件。
+gradlew：macOS/Linux 的 Gradle wrapper 启动脚本；类 Unix 系统可能需要给执行权限。gradlew.bat：Windows 启动脚本，在 PowerShell 用 .\gradlew.bat build。二者调用 wrapper jar，不是业务代码。
+gradle/wrapper/gradle-wrapper.jar：wrapper 启动器二进制，必须随项目保留。gradle/wrapper/gradle-wrapper.properties：固定 Gradle 8.11 下载地址及缓存策略。首次启动可能联网下载 Gradle；拥有脚本并不代表电脑已经缓存所有构建依赖。
+.wpilib/wpilib_preferences.json：WPILib 工程语言、年份与队号。teamNumber=0 是教学占位；真实队号由 WPILib: Set Team Number 填写。本文件不是 DS 设置，改这里不会自动替 DS 改队号，也不代表已给 roboRIO 刷好镜像。
+.vscode/launch.json：WPILib 桌面与 roboRIO 调试入口。已移除旧工程与本课无关的 Playground 启动配置。.vscode/settings.json：Java 构建配置自动更新设置；没有写入老师电脑的绝对 JDK 路径，方便分发。
+.gitignore：排除可再生缓存、构建产物、日志与仿真窗口状态；不会删文件，也不会自动取消跟踪已提交文件。WPILib-License.md：保留原工程带来的 WPILib 许可证，使用和分发前保留相应版权信息。
+README.md：给首次打开项目的人看的启动顺序、版本、控制说明、限制和验证情况。docs/FILE_GUIDE.txt：本册的纯文本副本，方便在编辑器查看。docs/GIT_DEMO.txt：教师使用的 Git 演示命令与预期状态，避免课堂临时拼命令。
+## 三 依赖与部署目录
+vendordeps/WPILibNewCommands.json：声明 Command-based 库，随 2026 安装器提供。vendordeps/Phoenix6.json：CTRE Phoenix 6 26.3.0 官方声明，包含 Java/JNI 坐标、平台与 Maven 地址。JSON 是下载清单，不是所有库本体；代码 import TalonFX 仍需 Gradle 拿到实际依赖。
+本模板移除 AdvantageKit 依赖与注解处理器，使用普通 TimedRobot、SmartDashboard 与 DataLogManager。因而没有 TankIOInputsAutoLogged 之类生成类。旧工程这些类是编译时由 @AutoLog 注解生成，不应因为源文件树里找不到就随手新建同名类。
+src/main/deploy/README.txt：静态部署资源目录的说明。Gradle 将此目录内容放到 roboRIO 的 /home/lvuser/deploy。本课没有轨迹文件；日后路径规划资源可放这里。此目录与 src/main/java 的 Java 编译输入不同。
+生成目录 build/ 存 class、jar、报告等；.gradle/ 存项目构建状态；logs/ 保存运行日志。这些不属于模板源码，打包交付时排除。运行后出现它们是正常的，不能把整目录误认成新手写出来的源代码。
+## 四 顶层五个 Java 文件
+Main.java：JVM 的 main 入口，调用 RobotBase.startRobot(Robot::new)。依赖 WPILib 启动框架，通常无需改。不要把按钮绑定或电机初始化塞进这里。
+Robot.java：继承 TimedRobot，管理生命周期。robotInit 启动日志并创建 Container；robotPeriodic 运行 CommandScheduler；autonomousInit 取选择器命令并调度；teleopInit 取消自动；disabledInit 与 testInit 取消现有命令并调用 stopAll。创建 IO 的工作放在 Container，而非每轮 robotPeriodic。
+RobotContainer.java：持有一个手柄、一个底盘、两个滚轮子系统和一个 SendableChooser。依据 RobotBase.isReal 选择 Real/Sim，实现依赖注入；通过 configureBindings 安排默认驾驶、A/左肩/X 键；通过 getAutonomousCommand 向 Robot 提供已选自动。它负责装配，不应承担复杂硬件控制算法。
+Constants.java：集中保存手柄槽位、死区、输出限制、CAN ID、限流与实车开关。ALLOW_REAL_HARDWARE=false 时在实车启动会明确抛错，而不是悄悄输出。本例 LOOP_SECONDS 作为后续模型扩展预留，当前线性模型未使用它，不要讲成所有模块都读取了它。
+commands/DriveForTime.java：独立的“一秒直行”任务。构造器保存依赖与参数，addRequirements 声明底盘占用；initialize 重启 Timer；execute 发同侧输出；isFinished 到时返回 true；end 无论正常或中断均停车。只有计时和开环输出，不能保证行驶距离，不叫精确自动导航。
+## 五 drive 目录的四个文件
+subsystems/drive/DriveIO.java：接口及 Inputs 数据结构。updateInputs 读取状态，setOutputs 接收左右请求，stop 默认发送零。接口定义能力，不能 new 出具体电机。类通过 implements DriveIO 实现契约；不是“类继承接口”的 Java 语法。
+subsystems/drive/DriveIOReal.java：创建四个 TalonFX，配置方向与定子限流，并检查 apply 返回状态；运行时给同侧两电机同样请求，读取主电机转速。变量名带 Follower 不代表设置了 CTRE Follower 模式。CAN ID 与方向只是示例，必须与实际安装核对。
+subsystems/drive/DriveIOSim.java：保存左右请求，并用输出乘 80 得到电机转每秒。Disabled 时归零。该模型用于看软件数据流，没有里程计、惯性、打滑、电池下垂或 HAL 电机模拟，因此不用于 PID、路径和实车性能结论。
+subsystems/drive/DriveSubsystem.java：继承 SubsystemBase，持有 IO 和一份 Inputs。arcade 把前进转向混成左右输出；setOutputs 限幅；stop 调用 IO；periodic 读数据、检查禁用状态并发布遥测。它不知道当前用真电机还是简单模型，因而同一命令能复用。
+课堂说辞：“IO 像统一插座，Real 和 Sim 是两种实现；Subsystem 只使用这个插座。分层增加了文件数量，却减少了换一台设备时必须修改的地方。”这个比喻只解释依赖关系，不表示硬件或电气接口真的通用。
+## 六 roller 目录的四个文件
+subsystems/roller/RollerIO.java：单滚轮接口与 Inputs，定义 setOutput 和 updateInputs。Intake 与 Shooter 各持一套实现，没有共享单个状态对象。
+subsystems/roller/RollerIOReal.java：按构造器给的 CAN ID 创建一台 TalonFX，配置限流并检查结果，输出请求并读取电机转速。例子没有完整的正反方向配置、速度闭环和温度告警，这些属于后续硬件适配。
+subsystems/roller/RollerIOSim.java：一台滚轮的线性模型，输出乘 80 得转速，Disabled 时归零。与底盘模拟职责相似，但每个实例独立；不会模拟球体进入、射出或撞击。
+subsystems/roller/RollerSubsystem.java：用 label 区分 Intake/Shooter 的遥测路径，runAt 产生一个 runEnd 命令，自动要求当前子系统，结束和被打断时 stop。runAt 不是立即执行电机命令，而是返回一个要由调度器运行的 Command。
+旧项目的 Intake 包还包含 PivotIO/Real/Sim，表示吸取机构的角度轴。第一课模板只保留滚轮演示；要恢复角度轴，应新增相应子系统/IO 与常量，而不是把 Pivot 控制偷偷塞进滚轮 periodic。旧 ShooterSubsystem 复用 Roller 的做法在本例用两个 RollerSubsystem 对象表达。
+## 七 从问题定位到文件
+换 A 键为 B 键：RobotContainer.configureBindings。换手柄槽位：Constants.DRIVER_PORT 并核对 DS。改显示字段名：发布它的 Subsystem，并同步仪表盘路径。改自动显示名称或可选项：RobotContainer 的 autoChooser。改自动持续时间：创建 DriveForTime 的参数。改命令结束停车行为：该命令的 end 或 runEnd 结束动作。
+换电机品牌：保留 IO 接口和子系统逻辑，增加对应厂商实现与依赖，在 Container 替换装配。改 CAN ID：Constants 与真实设备编号同时核对。升级 WPILib：官方导入迁移流程，检查 GradleRIO、wrapper、JDK、settings、preferences 与 vendordep 年份，不只替换一个字符串。
+看不到遥测：先确认程序运行与 NT 客户端连接，再检查 periodic 是否发布和字段路径。按键不工作：先 DS 槽位/按钮，再绑定与调度器，再命令占用与模式，最后 IO 和硬件。不先把所有问题归为 CAN 线断了。
+## 八 与原工程对照和教学删减
+旧工程 GradleRIO 2025.3.2、Phoenix 25.4.0、AdvantageKit；新工程 GradleRIO 2026.2.1、Phoenix 26.3.0、普通 WPILib DataLog。旧 settings.gradle 的 frcYear 为 2024，属于旧配置残留；新模板修为 2026。
+旧 Robot 继承 LoggedRobot，并仅配置 NT4Publisher；新 Robot 继承 TimedRobot，启动 DataLogManager。旧 TankIO 用电机 RPS 与带单位类型；新 DriveIO 用归一化开环请求，避免第一课同时解释单位系统和闭环。两者架构相似，但控制策略不同，不能把新例子说成旧底盘算法的等价复刻。
+旧底盘含自写位置积分与控制器增益更新；本课不复制它们，以免零基础学生把“第一课要理解的内容”扩大成运动学和调参。新的简单模拟明确没有 Pose2d。旧 Shoot/Intake 等多个命令本课用 runEnd 展示共性，同时保留一个完整 Command 类供讲解生命周期。
+## 九 一次阅读演示的落点
+先让学生找 RobotContainer 的 driver.a，再找 shooter.runAt，再找 RollerSubsystem.runAt，再找 io.setOutput。此时问“哪部分规定按住 A，哪部分规定停止，哪部分知道 TalonFX”，答案分别是 Container、命令结束动作、IOReal。
+再从 DriveForTime 的 execute 跳进 DriveSubsystem.setOutputs，最后 IOReal.setOutputs。让学生看到同一个底盘能力被手动命令和自动命令共同调用。这是 Command 与 Subsystem 分开的直接理由。
+最后回到 Git 的 Diff 页：只把自动标签改名时，差异应只在 Container；如果同时出现四十个生成文件，回去检查暂存范围和 .gitignore。把项目结构知识与代码管理接起来。
+## 十 验证与适用边界
+本工程会记录实际构建结果到 README。没有实车与手柄的 UI 验证不等于硬件验收；实车开关默认关闭。模型只支持教学数据流。Java 语法、完整物理仿真、里程计、PID、视觉、路径规划和 AdvantageKit Replay 留到后续课。
+真实上车前至少核对队号、设备型号、CAN ID 唯一性、左右正方向、限流、零输出行为、模式切换和命令结束停车；这些是对本工程明确示例参数的适配工作，不应让学生以为下载模板即可驾驶任意底盘。
